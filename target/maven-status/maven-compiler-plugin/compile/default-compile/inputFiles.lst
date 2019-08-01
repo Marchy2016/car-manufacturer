@@ -1,0 +1,15 @@
+/home/marcus/IdeaProjects/testing/src/main/java/com/testing/project/java_ee/entity/SeatMaterial.java
+/home/marcus/IdeaProjects/testing/src/main/java/com/testing/project/java_ee/entity/SeatBeltModel.java
+/home/marcus/IdeaProjects/testing/src/main/java/com/testing/project/java_ee/entity/CarCreated.java
+/home/marcus/IdeaProjects/testing/src/main/java/com/testing/project/java_ee/control/CarFactory.java
+/home/marcus/IdeaProjects/testing/src/main/java/com/testing/project/java_ee/entity/SeatBelt.java
+/home/marcus/IdeaProjects/testing/src/main/java/com/testing/project/java_ee/entity/Specification.java
+/home/marcus/IdeaProjects/testing/src/main/java/com/testing/project/java_ee/entity/EngineType.java
+/home/marcus/IdeaProjects/testing/src/main/java/com/testing/project/java_ee/control/CarRepository.java
+/home/marcus/IdeaProjects/testing/src/main/java/com/testing/project/java_ee/boundry/CarManufacturer.java
+/home/marcus/IdeaProjects/testing/src/main/java/com/testing/project/java_ee/control/CarProcessor.java
+/home/marcus/IdeaProjects/testing/src/main/java/com/testing/project/java_ee/entity/Seat.java
+/home/marcus/IdeaProjects/testing/src/main/java/com/testing/project/java_ee/entity/Car.java
+/home/marcus/IdeaProjects/testing/src/main/java/com/testing/project/java_ee/control/CarCreationListener.java
+/home/marcus/IdeaProjects/testing/src/main/java/com/testing/project/java_ee/boundry/CarResource.java
+/home/marcus/IdeaProjects/testing/src/main/java/com/testing/project/java_ee/entity/Color.java
