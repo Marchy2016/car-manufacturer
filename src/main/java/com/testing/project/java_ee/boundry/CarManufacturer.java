@@ -1,5 +1,6 @@
 package com.testing.project.java_ee.boundry;
 
+import com.testing.project.java_ee.control.CarCache;
 import com.testing.project.java_ee.control.CarFactory;
 import com.testing.project.java_ee.control.CarProcessor;
 import com.testing.project.java_ee.control.CarRepository;
@@ -31,17 +32,24 @@ public class CarManufacturer {
     @PersistenceContext
     EntityManager entityManager;
 
+    @Inject
+    CarCache carCache;
+
     public Car manufactureCar(Specification specification){
         Car car = carFactory.createCar(specification);
        // carRepository.store(car);
-        //carProcessor.processNewCar(car);
-      //  carCreated.fire(new CarCreated(car.getIdentifier()));
+        carProcessor.processNewCar(car);
+        carProcessor.processNewCarAsync(car);
+        carCreated.fire(new CarCreated(car.getIdentifier()));
         entityManager.persist(car);
+        carCache.cache(car);
         return car;
     }
 
     public List<Car> retrieveCars(){
         //return carRepository.loadCars();
-        return entityManager.createNamedQuery(Car.FIND_ALL,Car.class).getResultList();
+       // return entityManager.createNamedQuery(Car.FIND_ALL,Car.class).getResultList();
+
+        return  carCache.retrieveCars();
     }
 }
