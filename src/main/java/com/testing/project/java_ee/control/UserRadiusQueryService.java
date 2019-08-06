@@ -7,6 +7,7 @@ import javax.ejb.Startup;
 import javax.ejb.TimerService;
 import javax.enterprise.concurrent.ManagedScheduledExecutorService;
 import javax.inject.Inject;
+import java.time.LocalDateTime;
 import java.util.logging.Logger;
 
 @Startup
@@ -51,7 +52,6 @@ public class UserRadiusQueryService {
 
     // private int subnet;
     private static final MediaType[] ACCEPT_MEDIA_TYPES = {/*MediaType.APPLICATION_JSON_TYPE,*/ MediaType.APPLICATION_XML_TYPE};
-
 
 
     @PostConstruct
@@ -122,7 +122,7 @@ public class UserRadiusQueryService {
                     for (AccountService accountService2 : accountProduct.getServices()) {
 
                         if (accountService2 instanceof AccountAccessService) {
-                           String username = ((AccountAccessService) accountService2).getUserName();
+                            String username = ((AccountAccessService) accountService2).getUserName();
 
                             for (ProductAttribute productAttribute : accountService.getAccountProduct().getProduct().getProductAttributes()) {
 
@@ -141,57 +141,65 @@ public class UserRadiusQueryService {
 
     }
 
-    private void reserve(String username, AccountService accountService, int subnet){
+    private void reserve(String username, AccountService accountService, int subnet) {
 
         if (username != null) {
 
-            try {
-                String ipAddress = radacctRepository.findIPAddressByUserName(username);
-                String region = regionIPAddressRepository.findRegionByIPAddress(ipAddress);
-                if (region != null) {
-                    ReservationIPAddressDTO reservationIPAddressDTO = ipManagementClient.reserveIPAddress(accountService.getAccountProduct().getAccount().getId(), subnet, region);
-                    if (reservationIPAddressDTO != null) {
+            ReservationIPAddressDTO reservationIPAddressDTO = getIpAndReion(subnet);
 
-                        accountService.setStatus(accountStatusRepository.find(AccountStatuses.ACCOUNT_STATUS_ACTIVE));
-                        AccountIpAddress accountIpAddress = new AccountIpAddress();
-                        accountIpAddress.setIpAddress(reservationIPAddressDTO.getIp().getIpAddress());
-                        accountIpAddress.setAccountService(accountService);
-                        accountIpAddress.setReserved(true);
+            if (reservationIPAddressDTO != null) {
+
+                accountService.setStatus(accountStatusRepository.find(AccountStatuses.ACCOUNT_STATUS_ACTIVE));
+                AccountIpAddress accountIpAddress = new AccountIpAddress();
+                accountIpAddress.setIpAddress(reservationIPAddressDTO.getIp().getIpAddress());
+                accountIpAddress.setAccountService(accountService);
+                accountIpAddress.setReserved(true);
 
 
-                        AccountServiceAttribute productSubnetServiceAttribute = new AccountServiceAttribute();
-                        AccountServiceAttribute radiusRouteServiceAttribute = new AccountServiceAttribute();
-                        AccountServiceAttribute radiusIPAddressServiceAttribute = new AccountServiceAttribute();
+                AccountServiceAttribute productSubnetServiceAttribute = new AccountServiceAttribute();
+                AccountServiceAttribute radiusRouteServiceAttribute = new AccountServiceAttribute();
+                AccountServiceAttribute radiusIPAddressServiceAttribute = new AccountServiceAttribute();
 
-                        //Setting LDAP attributes
-                        productSubnetServiceAttribute.setAttribute(attributeRepository.find(ATTRIBUTE_ID_PRODUCT_SUBNET_SIZE));
-                        radiusRouteServiceAttribute.setAttribute(attributeRepository.find(ATTRIBUTE_ID_RADIUS_FRAMED_ROUTE));
-                        radiusIPAddressServiceAttribute.setAttribute(attributeRepository.find(ATTRIBUTE_ID_RADIUS_FRAMED_IP_ADDRESS));
+                //Setting LDAP attributes
+                productSubnetServiceAttribute.setAttribute(attributeRepository.find(ATTRIBUTE_ID_PRODUCT_SUBNET_SIZE));
+                radiusRouteServiceAttribute.setAttribute(attributeRepository.find(ATTRIBUTE_ID_RADIUS_FRAMED_ROUTE));
+                radiusIPAddressServiceAttribute.setAttribute(attributeRepository.find(ATTRIBUTE_ID_RADIUS_FRAMED_IP_ADDRESS));
 
-                        productSubnetServiceAttribute.setAttributeValue(String.valueOf(reservationIPAddressDTO.getIp().getIpSubnet().getSize()));
-                        radiusRouteServiceAttribute.setAttributeValue(reservationIPAddressDTO.getIp().getRegion().getRouterRegion());
-                        radiusIPAddressServiceAttribute.setAttributeValue(reservationIPAddressDTO.getIp().getIpAddress());
+                productSubnetServiceAttribute.setAttributeValue(String.valueOf(reservationIPAddressDTO.getIp().getIpSubnet().getSize()));
+                radiusRouteServiceAttribute.setAttributeValue(reservationIPAddressDTO.getIp().getRegion().getRouterRegion());
+                radiusIPAddressServiceAttribute.setAttributeValue(reservationIPAddressDTO.getIp().getIpAddress());
 
-                        productSubnetServiceAttribute.setAccountService(accountService);
-                        accountService.getServiceAttributes().add(productSubnetServiceAttribute);
+                productSubnetServiceAttribute.setAccountService(accountService);
+                accountService.getServiceAttributes().add(productSubnetServiceAttribute);
 
-                        radiusRouteServiceAttribute.setAccountService(accountService);
-                        accountService.getServiceAttributes().add(radiusRouteServiceAttribute);
+                radiusRouteServiceAttribute.setAccountService(accountService);
+                accountService.getServiceAttributes().add(radiusRouteServiceAttribute);
 
-                        radiusIPAddressServiceAttribute.setAccountService(accountService);
-                        accountService.getServiceAttributes().add(radiusIPAddressServiceAttribute);
+                radiusIPAddressServiceAttribute.setAccountService(accountService);
+                accountService.getServiceAttributes().add(radiusIPAddressServiceAttribute);
 
-                        accountServiceRepository.save(accountService);
-                        workflowClient.updateLDAPAttributes(accountService.getId());
+                accountServiceRepository.save(accountService);
+                workflowClient.updateLDAPAttributes(accountService.getId());
 
 
-                    }
-                }
-            } catch (Exception ex) {
-                ex.printStackTrace();
+            }
+        }
+    }
+
+
+    private ReservationIPAddressDTO getIpAndReion(int subnet) {
+
+        try {
+            String ipAddress = radacctRepository.findIPAddressByUserName(username);
+            String region = regionIPAddressRepository.findRegionByIPAddress(ipAddress);
+            if (region != null) {
+                return ipManagementClient.reserveIPAddress(accountService.getAccountProduct().getAccount().getId(), subnet, region);
             }
 
+        } catch (Exception ex) {
+            ex.printStackTrace();
         }
+        return null;
 
     }
 
