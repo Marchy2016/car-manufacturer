@@ -5,6 +5,7 @@ import javax.annotation.Resource;
 import javax.ejb.Singleton;
 import javax.ejb.Startup;
 import javax.ejb.TimerService;
+import javax.enterprise.concurrent.ManagedScheduledExecutorService;
 import javax.inject.Inject;
 import java.util.logging.Logger;
 
@@ -47,8 +48,7 @@ public class UserRadiusQueryService {
     private String timerName;
     private int initialDurationInMinutes;
     private int intervalDurationInMinutes;
-    private String username;
-    private String ipAddress;
+
     // private int subnet;
     private static final MediaType[] ACCEPT_MEDIA_TYPES = {/*MediaType.APPLICATION_JSON_TYPE,*/ MediaType.APPLICATION_XML_TYPE};
 
@@ -122,7 +122,7 @@ public class UserRadiusQueryService {
                     for (AccountService accountService2 : accountProduct.getServices()) {
 
                         if (accountService2 instanceof AccountAccessService) {
-                            username = ((AccountAccessService) accountService2).getUserName();
+                           String username = ((AccountAccessService) accountService2).getUserName();
 
                             for (ProductAttribute productAttribute : accountService.getAccountProduct().getProduct().getProductAttributes()) {
 
@@ -146,7 +146,7 @@ public class UserRadiusQueryService {
         if (username != null) {
 
             try {
-                ipAddress = radacctRepository.findIPAddressByUserName(username);
+                String ipAddress = radacctRepository.findIPAddressByUserName(username);
                 String region = regionIPAddressRepository.findRegionByIPAddress(ipAddress);
                 if (region != null) {
                     ReservationIPAddressDTO reservationIPAddressDTO = ipManagementClient.reserveIPAddress(accountService.getAccountProduct().getAccount().getId(), subnet, region);
