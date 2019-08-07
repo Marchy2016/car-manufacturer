@@ -2,12 +2,11 @@ package com.testing.project.java_ee.control;
 
 
 import javax.annotation.Resource;
-import javax.ejb.Singleton;
-import javax.ejb.Startup;
-import javax.ejb.TimerService;
+import javax.ejb.*;
 import javax.enterprise.concurrent.ManagedScheduledExecutorService;
 import javax.inject.Inject;
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.logging.Logger;
 
 @Startup
@@ -105,101 +104,112 @@ public class UserRadiusQueryService {
                 updateUpdateLDAPAttributesTimer(intervalDurationInMinutes = applicationPropertyRepository.getAsInt(ApplicationProperties.LDAP_ATTRIBUTES_UPDATE_TIMER_INTERVAL_DURATION_ATTRIBUTE_KEY));
             } else {
                 LOGGER.info("Starting to update ldap attributes for bb static ip: " + LocalDateTime.now());
-
                 updateAccountAttributes();
-
-
             }
         }
     }
 
     private void updateAccountAttributes() {
 
-        for (AccountService accountService : accountServiceRepository.findAllByStatusId(AccountStatuses.ACCOUNT_STATUS_PENDING)) {
-
-            for (AccountProduct accountProduct : accountService.getAccountProduct().getAccount().getProducts()) {
-                if (!accountProduct.isVas()) {
-                    for (AccountService accountService2 : accountProduct.getServices()) {
-
-                        if (accountService2 instanceof AccountAccessService) {
-                            String username = ((AccountAccessService) accountService2).getUserName();
-
-                            for (ProductAttribute productAttribute : accountService.getAccountProduct().getProduct().getProductAttributes()) {
-
-                                int subnet = Integer.parseInt(productAttribute.getAttributeValue());
-                                reserve(username, accountService, subnet);
-
-                            }
-
-                        }
-                    }
+        AccountService accountService = getPendingAccounts();
+        if (accountService != null) {
+            for (AccountService accountService2 : getAccountProduct(accountService).getServices()) {
+                if (accountService2 instanceof AccountAccessService) {
+                    String username = ((AccountAccessService) accountService2).getUserName();
+                    getAccountAttributeAndUpdateLDAP(accountService2, username);
                 }
-
             }
-
         }
 
     }
 
-    private void reserve(String username, AccountService accountService, int subnet) {
+    private void getAccountAttributeAndUpdateLDAP(AccountService accountService, String username) {
+
+        for (ProductAttribute productAttribute : accountService.getAccountProduct().getProduct().getProductAttributes()) {
+            int subnet = Integer.parseInt(productAttribute.getAttributeValue());
+            setLDAPAttributes(username, accountService, subnet);
+        }
+
+    }
+
+    private AccountProduct getAccountProduct(AccountService accountService) {
+
+        AccountProduct accountProduct = null;
+        try {
+            for (AccountProduct accotProduct : accountService.getAccountProduct().getAccount().getProducts()) {
+                if (!accountProduct.isVas()) {
+                    accountProduct = accotProduct;
+                }
+            }
+        } catch (Exception ex) {
+            LOGGER.info("Error retrieving account product " + ex.getMessage());
+        }
+        return accountProduct;
+    }
+
+
+    private AccountService getPendingAccounts() {
+
+        AccountService accountService = null;
+        try {
+            Collection<AccountService> accountServices = accountServiceRepository.findAllByStatusId(AccountStatuses.ACCOUNT_STATUS_PENDING);
+            for (AccountService accontService : accountServices) {
+                accountService = accontService;
+            }
+        } catch (Exception ex) {
+            LOGGER.info("Error retrieving pending accounts" + ex.getMessage());
+        }
+        return accountService;
+    }
+
+    private void setLDAPAttributes(String username, AccountService accountService, int subnet) {
 
         if (username != null) {
 
-            ReservationIPAddressDTO reservationIPAddressDTO = getIpAndReion(subnet);
+            try {
+                String ipAddress = radacctRepository.findIPAddressByUserName(username);
+                String region = regionIPAddressRepository.findRegionByIPAddress(ipAddress);
+                if (region != null) {
+                    ReservationIPAddressDTO reservationIPAddressDTO = ipManagementClient.reserveIPAddress(accountService.getAccountProduct().getAccount().getId(), subnet, region);
+                    if (reservationIPAddressDTO != null) {
 
-            if (reservationIPAddressDTO != null) {
+                        accountService.setStatus(accountStatusRepository.find(AccountStatuses.ACCOUNT_STATUS_ACTIVE));
+                        AccountIpAddress accountIpAddress = new AccountIpAddress();
+                        accountIpAddress.setIpAddress(reservationIPAddressDTO.getIp().getIpAddress());
+                        accountIpAddress.setAccountService(accountService);
+                        accountIpAddress.setReserved(true);
 
-                accountService.setStatus(accountStatusRepository.find(AccountStatuses.ACCOUNT_STATUS_ACTIVE));
-                AccountIpAddress accountIpAddress = new AccountIpAddress();
-                accountIpAddress.setIpAddress(reservationIPAddressDTO.getIp().getIpAddress());
-                accountIpAddress.setAccountService(accountService);
-                accountIpAddress.setReserved(true);
+                        AccountServiceAttribute productSubnetServiceAttribute = new AccountServiceAttribute();
+                        AccountServiceAttribute radiusRouteServiceAttribute = new AccountServiceAttribute();
+                        AccountServiceAttribute radiusIPAddressServiceAttribute = new AccountServiceAttribute();
 
+                        //Setting LDAP attributes
+                        productSubnetServiceAttribute.setAttribute(attributeRepository.find(ATTRIBUTE_ID_PRODUCT_SUBNET_SIZE));
+                        radiusRouteServiceAttribute.setAttribute(attributeRepository.find(ATTRIBUTE_ID_RADIUS_FRAMED_ROUTE));
+                        radiusIPAddressServiceAttribute.setAttribute(attributeRepository.find(ATTRIBUTE_ID_RADIUS_FRAMED_IP_ADDRESS));
 
-                AccountServiceAttribute productSubnetServiceAttribute = new AccountServiceAttribute();
-                AccountServiceAttribute radiusRouteServiceAttribute = new AccountServiceAttribute();
-                AccountServiceAttribute radiusIPAddressServiceAttribute = new AccountServiceAttribute();
+                        productSubnetServiceAttribute.setAttributeValue(String.valueOf(reservationIPAddressDTO.getIp().getIpSubnet().getSize()));
+                        radiusRouteServiceAttribute.setAttributeValue(reservationIPAddressDTO.getIp().getRegion().getRouterRegion());
+                        radiusIPAddressServiceAttribute.setAttributeValue(reservationIPAddressDTO.getIp().getIpAddress());
 
-                //Setting LDAP attributes
-                productSubnetServiceAttribute.setAttribute(attributeRepository.find(ATTRIBUTE_ID_PRODUCT_SUBNET_SIZE));
-                radiusRouteServiceAttribute.setAttribute(attributeRepository.find(ATTRIBUTE_ID_RADIUS_FRAMED_ROUTE));
-                radiusIPAddressServiceAttribute.setAttribute(attributeRepository.find(ATTRIBUTE_ID_RADIUS_FRAMED_IP_ADDRESS));
+                        productSubnetServiceAttribute.setAccountService(accountService);
+                        accountService.getServiceAttributes().add(productSubnetServiceAttribute);
 
-                productSubnetServiceAttribute.setAttributeValue(String.valueOf(reservationIPAddressDTO.getIp().getIpSubnet().getSize()));
-                radiusRouteServiceAttribute.setAttributeValue(reservationIPAddressDTO.getIp().getRegion().getRouterRegion());
-                radiusIPAddressServiceAttribute.setAttributeValue(reservationIPAddressDTO.getIp().getIpAddress());
+                        radiusRouteServiceAttribute.setAccountService(accountService);
+                        accountService.getServiceAttributes().add(radiusRouteServiceAttribute);
 
-                productSubnetServiceAttribute.setAccountService(accountService);
-                accountService.getServiceAttributes().add(productSubnetServiceAttribute);
+                        radiusIPAddressServiceAttribute.setAccountService(accountService);
+                        accountService.getServiceAttributes().add(radiusIPAddressServiceAttribute);
 
-                radiusRouteServiceAttribute.setAccountService(accountService);
-                accountService.getServiceAttributes().add(radiusRouteServiceAttribute);
-
-                radiusIPAddressServiceAttribute.setAccountService(accountService);
-                accountService.getServiceAttributes().add(radiusIPAddressServiceAttribute);
-
-                accountServiceRepository.save(accountService);
-                workflowClient.updateLDAPAttributes(accountService.getId());
-
-
-            }
-        }
-    }
-
-
-    private ReservationIPAddressDTO getIpAndReion(int subnet) {
-
-        try {
-            String ipAddress = radacctRepository.findIPAddressByUserName(username);
-            String region = regionIPAddressRepository.findRegionByIPAddress(ipAddress);
-            if (region != null) {
-                return ipManagementClient.reserveIPAddress(accountService.getAccountProduct().getAccount().getId(), subnet, region);
+                        accountServiceRepository.save(accountService);
+                        workflowClient.updateLDAPAttributes(accountService.getId());
+                    }
+                }
+            } catch (Exception ex) {
+                LOGGER.info("Error setting up LDAP attributes " + ex.getMessage());
             }
 
-        } catch (Exception ex) {
-            ex.printStackTrace();
         }
-        return null;
 
     }
 
